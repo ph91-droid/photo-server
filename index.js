@@ -58,7 +58,7 @@ async function optimizeImages() {
                     const buffer = download.result.fileBinary;
                     const image = await Jimp.read(buffer);
                     image.resize(1000, Jimp.AUTO).quality(80);
-                    const optimizedBuffer = await image.getBuffer('image/jpeg');
+                    const optimizedBuffer = await image.getBufferAsync(Jimp.MIME_JPEG);
                     await dbx.filesUpload({
                         path: webPath,
                         contents: optimizedBuffer,
@@ -146,6 +146,7 @@ app.post('/api/select', async (req, res) => {
 cron.schedule('0 0 * * *', async () => { /* クリーンアップ処理 */ });
 
 app.listen(PORT, () => console.log(`Run on ${PORT}`));
+
 
 
 

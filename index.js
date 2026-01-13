@@ -119,8 +119,9 @@ app.get('/api/images', async (req, res) => {
         }));
 
         res.json(images);
-    } catch (err) {
-        res.status(500).json({ error: 'Failed to fetch images from Dropbox' });
+        } catch (err) {
+        addLog(`API Error: ${err.error?.error_summary || err.message}`);
+        res.status(500).json({ error: 'Failed to fetch images from Dropbox', details: err.message });
     }
 });
 
@@ -146,6 +147,7 @@ app.post('/api/select', async (req, res) => {
 cron.schedule('0 0 * * *', async () => { /* クリーンアップ処理 */ });
 
 app.listen(PORT, () => console.log(`Run on ${PORT}`));
+
 
 
 

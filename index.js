@@ -110,13 +110,32 @@ app.get('/api/images', async (req, res) => {
         const list = await dbx.filesListFolder({ path: PATHS.WEB });
         const files = list.result.entries.filter(e => e['.tag'] === 'file');
 
-        const images = await Promise.all(files.map(async (f) => {
-            const link = await dbx.filesGetTemporaryLink({ path: f.path_lower });
-            return {
-                name: f.name,
-                url: link.result.link
-            };
+        // フォルダの共有リンクを取得（または作成）
+        let folderUrl = '';
+        try {
+            const shared = await dbx.sharingCreateSharedLinkWithSettings({ path: PATHS.WEB });
+            folderUrl = shared.result.url;
+        } catch (e) {
+            const links = await dbx.sharingListSharedLinks({ path: PATHS.WEB });
+            if (links.result.links.length > 0) folderUrl = links.result.links[0].url;
+        }
+
+        if (!folderUrl) throw new Error('No shared link found');
+
+        // 表示用URLのベースを作成 (dl.dropboxusercontent.com に置換)
+        const baseUrl = folderUrl.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('?dl=0', '');
+
+        const images = files.map(f => ({
+            name: f.name,
+            url: `${baseUrl}/${encodeURIComponent(f.name)}`
         }));
+
+        res.json(images);
+    } catch (err) {
+        addLog(`API Error: ${err.error?.error_summary || err.message}`);
+        res.status(500).json({ error: 'Failed' });
+    }
+});
 
         res.json(images);
         } catch (err) {
@@ -147,6 +166,7 @@ app.post('/api/select', async (req, res) => {
 cron.schedule('0 0 * * *', async () => { /* クリーンアップ処理 */ });
 
 app.listen(PORT, () => console.log(`Run on ${PORT}`));
+
 
 
 

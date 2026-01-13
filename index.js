@@ -4,12 +4,12 @@ const fs = require('fs');
 const path = require('path');
 const { Dropbox } = require('dropbox');
 const cron = require('node-cron');
-const  Jimp  = require('jimp');
+const Jimp = require('jimp');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// Dropbox設定 (Refresh Tokenを使用して永続化)
+// Dropbox設定
 const dbx = new Dropbox({
     refreshToken: process.env.DBX_REFRESH_TOKEN,
     clientId: process.env.DBX_CLIENT_ID,
@@ -21,14 +21,13 @@ app.use(express.json());
 
 // フォルダパス設定
 const PATHS = {
-    SOURCE: '/PhotoSelection/Source',  // あなたが写真を入れる元データ
-    WEB: '/PhotoSelection/Web',        // システムが生成する軽量版
-    ARCHIVE: '/PhotoSelection/Archive', // 期間終了後に移動
-    FINAL: '/PhotoSelection/Final',     // 最終納品用
-    SELECTIONS: '/PhotoSelection/Selections' // 結果保存
+    SOURCE: '/PhotoSelection/Source',
+    WEB: '/PhotoSelection/Web',
+    ARCHIVE: '/PhotoSelection/Archive',
+    FINAL: '/PhotoSelection/Final',
+    SELECTIONS: '/PhotoSelection/Selections'
 };
 
-// ログ保持用
 let statusLogs = [];
 function addLog(msg) {
     const log = `[${new Date().toISOString()}] ${msg}`;
@@ -37,7 +36,7 @@ function addLog(msg) {
     if (statusLogs.length > 50) statusLogs.shift();
 }
 
-// 修正後のoptimizeImages（ログ出力強化）
+// 画像の最適化（リサイズ処理）
 async function optimizeImages() {
     try {
         addLog('Starting optimization...');
@@ -49,16 +48,17 @@ async function optimizeImages() {
             const webPath = `${PATHS.WEB}/${file.name}`;
             try {
                 await dbx.filesGetMetadata({ path: webPath });
-                // 存在すればスキップ
             } catch (e) {
-                // なければ作成
                 addLog(`Optimizing: ${file.name}`);
                 try {
                     const download = await dbx.filesDownload({ path: file.path_lower });
                     const buffer = download.result.fileBinary;
                     const image = await Jimp.read(buffer);
+                    
+                    // Jimp v0.xの記法
                     image.resize(1000, Jimp.AUTO).quality(80);
-                    const optimizedBuffer = await image.getBufferAsync(Jimp.MIME_JPEG);
+                    
+                    const optimizedBuffer = await image.getBufferAsync('image/jpeg');
                     await dbx.filesUpload({
                         path: webPath,
                         contents: optimizedBuffer,
@@ -76,16 +76,19 @@ async function optimizeImages() {
     }
 }
 
-// フォルダの自動作成
+// 初期化
 async function initFolders() {
     for (const p of Object.values(PATHS)) {
         try {
             await dbx.filesGetMetadata({ path: p });
         } catch (e) {
-            await dbx.filesCreateFolderV2({ path: p });
+            try {
+                await dbx.filesCreateFolderV2({ path: p });
+                addLog(`Created folder: ${p}`);
+            } catch (err) {}
         }
     }
-    optimizeImages(); // 初回実行
+    optimizeImages();
 }
 initFolders();
 
@@ -104,71 +107,64 @@ app.get('/api/debug', async (req, res) => {
     }
 });
 
-// API: 画像一覧取得
 app.get('/api/images', async (req, res) => {
     try {
         const list = await dbx.filesListFolder({ path: PATHS.WEB });
         const files = list.result.entries.filter(e => e['.tag'] === 'file');
 
-        // フォルダの共有リンクを取得（または作成）
-        let folderUrl = '';
-        try {
-            const shared = await dbx.sharingCreateSharedLinkWithSettings({ path: PATHS.WEB });
-            folderUrl = shared.result.url;
-        } catch (e) {
-            const links = await dbx.sharingListSharedLinks({ path: PATHS.WEB });
-            if (links.result.links.length > 0) folderUrl = links.result.links[0].url;
-        }
-
-        if (!folderUrl) throw new Error('No shared link found');
-
-        // 表示用URLのベースを作成 (dl.dropboxusercontent.com に置換)
-        const baseUrl = folderUrl.replace('www.dropbox.com', 'dl.dropboxusercontent.com').replace('?dl=0', '');
-
-        const images = files.map(f => ({
-            name: f.name,
-            url: `${baseUrl}/${encodeURIComponent(f.name)}`
+        const images = await Promise.all(files.map(async (f) => {
+            const link = await dbx.filesGetTemporaryLink({ path: f.path_lower });
+            return {
+                name: f.name,
+                url: link.result.link
+            };
         }));
 
         res.json(images);
     } catch (err) {
-        addLog(`API Error: ${err.error?.error_summary || err.message}`);
         res.status(500).json({ error: 'Failed' });
     }
 });
 
-        res.json(images);
-        } catch (err) {
-        addLog(`API Error: ${err.error?.error_summary || err.message}`);
-        res.status(500).json({ error: 'Failed to fetch images from Dropbox', details: err.message });
-    }
-});
-
-// API: セレクト結果保存
 app.post('/api/select', async (req, res) => {
     const { userName, selectedImages } = req.body;
-    if (!userName || !selectedImages) return res.status(400).json({ error: 'Required' });
+    if (!userName || !selectedImages) return res.status(400).send('Missing params');
+
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const fileName = `${userName}_${timestamp}.json`;
-    const data = { userName, selectionDate: new Date().toLocaleString('ja-JP'), images: selectedImages };
+    const filePath = `${PATHS.SELECTIONS}/${fileName}`;
+    const data = { userName, selectionDate: new Date().toLocaleString('ja-JP'), count: selectedImages.length, images: selectedImages };
+
     try {
-        await dbx.filesUpload({
-            path: `${PATHS.SELECTIONS}/${fileName}`,
-            contents: JSON.stringify(data, null, 2),
-            mode: { '.tag': 'overwrite' }
-        });
-        res.json({ message: 'Saved' });
+        await dbx.filesUpload({ path: filePath, contents: JSON.stringify(data, null, 2), mode: { '.tag': 'overwrite' } });
+        res.json({ message: 'Success', fileName });
     } catch (err) {
-        res.status(500).json({ error: 'Failed' });
+        res.status(500).send('Save Error');
     }
 });
 
-cron.schedule('0 0 * * *', async () => { /* クリーンアップ処理 */ });
+// クリーンアップ
+cron.schedule('0 0 * * *', async () => {
+    const now = new Date();
+    const limitDays = 30;
+    async function processCleanup(folderPath, targetPath, isDelete = false) {
+        try {
+            const list = await dbx.filesListFolder({ path: folderPath });
+            for (const item of list.result.entries) {
+                if (item['.tag'] !== 'file') continue;
+                const created = new Date(item.server_modified || now);
+                if ((now - created) / (1000 * 60 * 60 * 24) > limitDays) {
+                    if (isDelete) await dbx.filesDeleteV2({ path: item.path_lower });
+                    else await dbx.filesMoveV2({ from_path: item.path_lower, to_path: `${targetPath}/${item.name}` });
+                }
+            }
+        } catch (err) {}
+    }
+    await processCleanup(PATHS.SOURCE, PATHS.ARCHIVE);
+    await processCleanup(PATHS.FINAL, null, true);
+    await processCleanup(PATHS.WEB, null, true);
+});
 
-app.listen(PORT, () => console.log(`Run on ${PORT}`));
-
-
-
-
-
-
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+});

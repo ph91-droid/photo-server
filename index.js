@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { Dropbox } = require('dropbox');
 const cron = require('node-cron');
-const { Jimp } = require('jimp');
+const  Jimp  = require('jimp');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -146,3 +146,4 @@ app.post('/api/select', async (req, res) => {
 cron.schedule('0 0 * * *', async () => { /* クリーンアップ処理 */ });
 
 app.listen(PORT, () => console.log(`Run on ${PORT}`));
+

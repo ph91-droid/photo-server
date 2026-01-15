@@ -145,7 +145,8 @@ app.get('/api/images', async (req, res) => {
                     const link = await dbx.filesGetTemporaryLink({ path: f.path_lower });
                     return {
                         name: f.name,
-                        url: link.result.link
+                        url: link.result.link,
+                        date: f.server_modified // 日付ソート用に追加
                     };
                 } catch (e) {
                     addLog(`Error fetching link for ${f.name}: ${e.message}`);

@@ -108,63 +108,119 @@ function App() {
     );
   }
 
+  const [sortBy, setSortBy] = useState('number'); // 'number', 'name', 'date'
+  const [viewMode, setViewMode] = useState('all'); // 'all', 'preview'
+
+  const sortedImages = [...images]
+    .filter(img => (viewMode === 'preview' ? selected.includes(img.name) : true))
+    .sort((a, b) => {
+      if (sortBy === 'name') return a.name.localeCompare(b.name);
+      if (sortBy === 'date') return new Date(b.params?.date || b.date) - new Date(a.params?.date || a.date);
+      if (sortBy === 'number') {
+        const aNum = parseInt(a.name.match(/\d+/) || 0, 10);
+        const bNum = parseInt(b.name.match(/\d+/) || 0, 10);
+        return aNum - bNum || a.name.localeCompare(b.name);
+      }
+      return 0;
+    });
+
   return (
     <div className="app-container">
       <header>
         <h1>{userName} 様</h1>
-        <p>画像のセレクトをお楽しみください！</p>
+        <p>{viewMode === 'preview' ? 'セレクトされた画像を確認しています' : '画像のセレクトをお楽しみください！'}</p>
         <div className="period-badge-container">
           <div className="period-badge">
             セレクト期間は30日間です。期間を過ぎると閲覧できなくなります。
           </div>
         </div>
+
+        {/* ソートタブ */}
+        <div className="sort-tabs">
+          <button
+            className={`sort-tab ${sortBy === 'number' ? 'active' : ''}`}
+            onClick={() => setSortBy('number')}
+          >
+            番号順
+          </button>
+          <button
+            className={`sort-tab ${sortBy === 'name' ? 'active' : ''}`}
+            onClick={() => setSortBy('name')}
+          >
+            名前順
+          </button>
+          <button
+            className={`sort-tab ${sortBy === 'date' ? 'active' : ''}`}
+            onClick={() => setSortBy('date')}
+          >
+            日付順
+          </button>
+        </div>
       </header>
 
-      <div className="gallery-grid">
-        {images.map(img => {
-          const isSelected = selected.includes(img.name);
-          return (
-            <div
-              className={`image-card ${isSelected ? 'selected' : ''}`}
-              key={img.name}
-              onClick={() => setSelectedImage(img.url)}
-            >
-              <div className="image-wrapper">
-                <img
-                  src={img.url}
-                  alt={img.name}
-                  onContextMenu={(e) => e.preventDefault()}
-                  style={{ pointerEvents: 'auto', userSelect: 'none' }}
-                />
+      {viewMode === 'preview' && sortedImages.length === 0 ? (
+        <div className="empty-preview">
+          <p>画像が選択されていません。</p>
+          <button className="submit-btn" onClick={() => setViewMode('all')}>一覧に戻る</button>
+        </div>
+      ) : (
+        <div className="gallery-grid">
+          {sortedImages.map(img => {
+            const isSelected = selected.includes(img.name);
+            return (
+              <div
+                className={`image-card ${isSelected ? 'selected' : ''}`}
+                key={img.name}
+                onClick={() => setSelectedImage(img.url)}
+              >
+                <div className="image-wrapper">
+                  <img
+                    src={img.url}
+                    alt={img.name}
+                    onContextMenu={(e) => e.preventDefault()}
+                    style={{ pointerEvents: 'auto', userSelect: 'none' }}
+                  />
+                </div>
+                <div className="image-info">
+                  <span className="image-name">{img.name}</span>
+                  <button
+                    className="select-button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleSelect(img.name);
+                    }}
+                  >
+                    {isSelected ? '取消' : '選択'}
+                  </button>
+                </div>
               </div>
-              <div className="image-info">
-                <span className="image-name">{img.name}</span>
-                <button
-                  className="select-button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleSelect(img.name);
-                  }}
-                >
-                  {isSelected ? '取消' : '選択'}
-                </button>
-              </div>
-            </div>
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
 
       <div className="action-bar">
-        <div className="selection-count">
-          選択中: <span>{selected.length}</span> 枚
+        <div className="action-bar-content">
+          <div className="selection-count">
+            選択中: <span>{selected.length}</span> 枚
+          </div>
+
+          <div className="action-buttons">
+            <button
+              className="preview-toggle-btn"
+              onClick={() => setViewMode(viewMode === 'all' ? 'preview' : 'all')}
+            >
+              {viewMode === 'all' ? '選択を確認' : '一覧に戻る'}
+            </button>
+            <button
+              className="submit-btn"
+              onClick={handleSubmit}
+              disabled={selected.length === 0 || submitting}
+            >
+              {submitting ? '保存中...' : 'セレクトを送信する'}
+            </button>
+          </div>
         </div>
-        <button
-          className="submit-btn"
-          onClick={handleSubmit}
-          disabled={selected.length === 0 || submitting}
-        >
-          {submitting ? '保存中...' : 'セレクトを送信する'}
-        </button>
       </div>
 
       {/* Lightbox Modal */}

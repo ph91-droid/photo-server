@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const { Dropbox } = require('dropbox');
 const cron = require('node-cron');
-const cron = require('node-cron');
+
 const Jimp = require('jimp');
 const { spawn } = require('child_process');
 

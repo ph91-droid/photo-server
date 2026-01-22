@@ -161,8 +161,8 @@ async function initFolders() {
             }
         }
     }
-    optimizeImages(); // 初回実行
-    optimizeFinalImages(); // Final用も実行
+    // optimizeImages(); // 初回実行 (メモリ節約のため無効化)
+    // optimizeFinalImages(); // Final用も実行 (メモリ節約のため無効化)
 }
 initFolders();
 
